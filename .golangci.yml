@@ -1,0 +1,111 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - asciicheck
+    - bodyclose
+    - depguard
+    - dogsled
+    - errcheck
+    - exhaustive
+    - exportloopref
+    - gci
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - gofmt
+    - gofumpt
+    - goheader
+    - goimports
+    - gomnd
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - makezero
+    - misspell
+    - nakedret
+    - nilerr
+    - nlreturn
+    - nolintlint
+    - prealloc
+    - predeclared
+    - revive
+    - staticcheck
+    - stylecheck
+    - thelper
+    - tparallel
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+    - wsl
+
+linters-settings:
+  gocognit:
+    min-complexity: 15
+  gocyclo:
+    min-complexity: 15
+  lll:
+    line-length: 120
+  gomnd:
+    checks: argument,case,condition,operation,return,assign
+    ignored-numbers: 0,1,2,3,4,5,8,10,16,24,32,60,64,100,255,256,512,1000,1024
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - checkPrivateReceivers
+          - sayRepetitiveInsteadOfStutters
+  gosec:
+    excludes:
+      - G204 # Command execution with variable
+      - G304 # File path provided as taint input
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+    
+    # Exclude magic number warnings for common values
+    - text: "Magic number"
+      linters:
+        - gomnd
+    
+    # Exclude line length warnings for long strings or URLs
+    - text: "line is \\d+ characters"
+      linters:
+        - lll
+      source: "http[s]?://"
+    
+    # Exclude certain function complexity warnings for main functions
+    - path: main\.go
+      text: "function .* is too complex"
+      linters:
+        - gocyclo
+        - gocognit
+
+  max-same-issues: 3
+  max-issues-per-linter: 0

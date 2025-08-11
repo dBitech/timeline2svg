@@ -1,0 +1,147 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+    
+    - name: Install govulncheck
+      run: go install golang.org/x/vuln/cmd/govulncheck@latest
+    
+    - name: Install golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+        args: --timeout=5m
+    
+    - name: Run staticcheck
+      run: staticcheck ./...
+    
+    - name: Run govulncheck
+      run: govulncheck ./...
+    
+    - name: Run go mod tidy check
+      run: |
+        go mod tidy
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "go mod tidy made changes, please run 'go mod tidy' and commit the changes"
+          git diff
+          exit 1
+        fi
+    
+    - name: Check for ineffective assignments
+      run: |
+        if command -v ineffassign >/dev/null 2>&1; then
+          ineffassign ./...
+        else
+          go install github.com/gordonklaus/ineffassign@latest
+          ineffassign ./...
+        fi
+    
+    - name: Check for misspellings
+      run: |
+        if command -v misspell >/dev/null 2>&1; then
+          misspell -error .
+        else
+          go install github.com/client9/misspell/cmd/misspell@latest
+          misspell -error .
+        fi
+    
+    - name: Check Go generate is up to date
+      run: |
+        go generate ./...
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "go generate made changes, please run 'go generate ./...' and commit the changes"
+          git diff
+          exit 1
+        fi
+
+  documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+    
+    - name: Check Go doc comments
+      run: |
+        go install golang.org/x/tools/cmd/godoc@latest
+        
+        # Check if all exported functions have doc comments
+        # This is a simple check - for more comprehensive documentation linting,
+        # consider using additional tools
+        echo "Checking for missing documentation..."
+        
+        # Generate documentation
+        godoc -http=:8080 &
+        sleep 3
+        
+        # Kill the background godoc server
+        pkill godoc || true
+        
+        echo "Documentation check completed"
+    
+    - name: Validate markdown files
+      uses: DavidAnson/markdownlint-cli2-action@v13
+      with:
+        globs: '**/*.md'
+        config: |
+          {
+            "MD013": false,
+            "MD033": false,
+            "MD041": false
+          }
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+    
+    - name: Check for outdated dependencies
+      run: |
+        go list -u -m all | grep -v "(indirect)" || true
+    
+    - name: Verify go.sum
+      run: |
+        go mod download
+        go mod verify

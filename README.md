@@ -4,11 +4,10 @@ A Go application that generates SVG timeline visualizations from CSV data.
 
 ## Documentation Notice
 
-This documentation and code comments were generated and maintained with the assistance of AI (GitHub Copilot). The AI helped with:
+This documentation and code comments were augmented  and maintained with the assistance of AI (GitHub Copilot). The AI helped with:
 
 - Writing comprehensive Go documentation comments following Go conventions
 - Creating detailed README documentation with usage examples
-- Modernizing the command-line interface from positional to named arguments
 - Ensuring documentation accuracy through automated testing validation
 
 ## Quick Start

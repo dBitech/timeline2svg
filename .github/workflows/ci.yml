@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22', '1.23', '1.24']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Verify dependencies
+      run: go mod verify
+    
+    - name: Run go vet
+      run: go vet ./...
+    
+    - name: Run go fmt check
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "Code is not properly formatted:"
+          gofmt -s -l .
+          exit 1
+        fi
+    
+    - name: Build
+      run: go build -v ./...
+    
+    - name: Create test CSV file
+      run: |
+        cat > test_timeline.csv << EOF
+        timestamp,title,notes
+        2024-01-01 09:00,Project Start,Initial project kickoff meeting
+        2024-01-01 10:30,Team Meeting,Daily standup with development team
+        2024-01-01 14:00,Code Review,Review of authentication module
+        2024-01-01 16:00,Testing,Unit tests for user registration
+        2024-01-01 17:30,Deploy,Deploy to staging environment
+        EOF
+    
+    - name: Test application functionality
+      run: |
+        # Test help output
+        go run main.go --help || true
+        
+        # Test basic functionality
+        go run main.go --csv test_timeline.csv
+        
+        # Verify SVG was created
+        if [ ! -f "test_timeline.svg" ]; then
+          echo "SVG file was not created"
+          exit 1
+        fi
+        
+        # Test with debug mode
+        go run main.go --debug --csv test_timeline.csv --output debug_test.svg
+        
+        # Verify debug SVG was created
+        if [ ! -f "debug_test.svg" ]; then
+          echo "Debug SVG file was not created"
+          exit 1
+        fi
+    
+    - name: Run golint (if available)
+      run: |
+        if command -v golint >/dev/null 2>&1; then
+          golint ./...
+        else
+          echo "golint not available, skipping"
+        fi
+      continue-on-error: true
+    
+    - name: Run staticcheck (if available)
+      run: |
+        if command -v staticcheck >/dev/null 2>&1; then
+          staticcheck ./...
+        else
+          echo "staticcheck not available, skipping"
+        fi
+      continue-on-error: true
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Build Windows executable
+      run: go build -o timeline2svg.exe
+    
+    - name: Create test CSV file
+      run: |
+        echo "timestamp,title,notes" > test_timeline.csv
+        echo "2024-01-01 09:00,Project Start,Initial project kickoff meeting" >> test_timeline.csv
+        echo "2024-01-01 10:30,Team Meeting,Daily standup with development team" >> test_timeline.csv
+        echo "2024-01-01 14:00,Code Review,Review of authentication module" >> test_timeline.csv
+    
+    - name: Test Windows executable
+      run: |
+        ./timeline2svg.exe --csv test_timeline.csv
+        if (-not (Test-Path "test_timeline.svg")) {
+          Write-Error "SVG file was not created"
+          exit 1
+        }
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Build macOS executable
+      run: go build -o timeline2svg
+    
+    - name: Create test CSV file
+      run: |
+        cat > test_timeline.csv << EOF
+        timestamp,title,notes
+        2024-01-01 09:00,Project Start,Initial project kickoff meeting
+        2024-01-01 10:30,Team Meeting,Daily standup with development team
+        2024-01-01 14:00,Code Review,Review of authentication module
+        EOF
+    
+    - name: Test macOS executable
+      run: |
+        ./timeline2svg --csv test_timeline.csv
+        if [ ! -f "test_timeline.svg" ]; then
+          echo "SVG file was not created"
+          exit 1
+        fi

@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Create release directory
+      run: mkdir -p release
+    
+    - name: Build for multiple platforms
+      run: |
+        # Linux amd64
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release/timeline2svg-linux-amd64 .
+        
+        # Linux arm64
+        GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o release/timeline2svg-linux-arm64 .
+        
+        # Windows amd64
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o release/timeline2svg-windows-amd64.exe .
+        
+        # Windows arm64
+        GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o release/timeline2svg-windows-arm64.exe .
+        
+        # macOS amd64
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o release/timeline2svg-darwin-amd64 .
+        
+        # macOS arm64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o release/timeline2svg-darwin-arm64 .
+    
+    - name: Create sample files for release
+      run: |
+        # Create sample CSV
+        cat > release/sample-timeline.csv << EOF
+        timestamp,title,notes
+        2024-01-15 09:00,Project Start,Initial project kickoff meeting with stakeholders
+        2024-01-20 14:30,Requirements Complete,All project requirements documented and approved
+        2024-02-10 11:15,Design Phase,System architecture and UI design finalized
+        2024-03-01 08:45,Development Sprint 1,Core functionality implementation begins
+        2024-03-15 16:20,Code Review,First major code review and refactoring
+        2024-04-01 10:00,Testing Phase,Comprehensive testing and bug fixes
+        2024-04-15 13:30,Beta Release,Beta version released to selected users
+        2024-05-01 09:00,Production Deploy,Official production deployment
+        EOF
+        
+        # Create basic config
+        cat > release/basic-config.yaml << EOF
+        font:
+          family: "Arial, sans-serif"
+          size: 12
+        colors:
+          background: "#ffffff"
+          timeline: "#333333"
+          events: "#4285f4"
+          text: "#333333"
+          notes: "#666666"
+        layout:
+          width: 1200
+          height: 600
+          margin_top: 50
+          margin_bottom: 50
+          margin_left: 100
+          margin_right: 100
+        timeline:
+          show_dates: true
+          show_times: true
+          min_text_spacing: 80
+          callout_levels: 4
+        EOF
+        
+        # Copy README for release
+        cp README.md release/
+    
+    - name: Create archives
+      run: |
+        cd release
+        
+        # Linux amd64
+        tar -czf timeline2svg-linux-amd64.tar.gz timeline2svg-linux-amd64 README.md sample-timeline.csv basic-config.yaml
+        
+        # Linux arm64
+        tar -czf timeline2svg-linux-arm64.tar.gz timeline2svg-linux-arm64 README.md sample-timeline.csv basic-config.yaml
+        
+        # Windows amd64
+        zip timeline2svg-windows-amd64.zip timeline2svg-windows-amd64.exe README.md sample-timeline.csv basic-config.yaml
+        
+        # Windows arm64
+        zip timeline2svg-windows-arm64.zip timeline2svg-windows-arm64.exe README.md sample-timeline.csv basic-config.yaml
+        
+        # macOS amd64
+        tar -czf timeline2svg-darwin-amd64.tar.gz timeline2svg-darwin-amd64 README.md sample-timeline.csv basic-config.yaml
+        
+        # macOS arm64
+        tar -czf timeline2svg-darwin-arm64.tar.gz timeline2svg-darwin-arm64 README.md sample-timeline.csv basic-config.yaml
+    
+    - name: Generate changelog
+      run: |
+        # Simple changelog generation
+        echo "## Changes in this release" > CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md || echo "- Initial release" >> CHANGELOG.md
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          release/timeline2svg-linux-amd64.tar.gz
+          release/timeline2svg-linux-arm64.tar.gz
+          release/timeline2svg-windows-amd64.zip
+          release/timeline2svg-windows-arm64.zip
+          release/timeline2svg-darwin-amd64.tar.gz
+          release/timeline2svg-darwin-arm64.tar.gz
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
