@@ -1,0 +1,43 @@
+font:
+  family: "Arial, sans-serif"
+  size: 12
+
+colors:
+  background: "#ffffff"
+  timeline: "#333333"
+  events: "#4285f4"
+  text: "#333333"
+  notes: "#666666"
+
+layout:
+  width: 1200
+  height: 600
+  margin_top: 80
+  margin_bottom: 80
+  margin_left: 100
+  margin_right: 100
+
+timeline:
+  line_width: 2
+  show_dates: true
+  show_times: true
+  horizontal_buffer: 50
+  avoid_text_overlap: true
+  min_text_spacing: 80
+  min_callout_length: 60
+  max_callout_length: 180
+  callout_levels: 4
+  text_element_padding: 2
+  callout_text_gap: 5
+
+columns:
+  display_order: ["title", "timestamp", "notes"]
+  timestamp_column: "timestamp"
+  use_detailed_styling: false
+
+event_marker:
+  shape: "circle"
+  size: 8
+  fill_color: "#4285f4"
+  stroke_color: "#333333"
+  stroke_width: 2

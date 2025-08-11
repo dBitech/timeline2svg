@@ -1,0 +1,68 @@
+# Advanced Timeline2SVG Configuration
+# This configuration is optimized for temporal clustering and time-proportional positioning
+# Key settings:
+#   - min_text_spacing: 10 (allows time-proportional positioning)
+#   - callout_levels: 8 (provides more positioning options for clustering)
+#   - max_callout_length: 200 (allows flexibility for constraint solving)
+
+font:
+  family: "Arial, sans-serif"  # Default font (fallback)
+  size: 12                     # Default size (fallback)
+
+colors:
+  background: "#ffffff"
+  timeline: "#2c3e50"
+  text: "#2c3e50"   # Default text color (fallback)
+  notes: "#7f8c8d"
+
+layout:
+  width: 1200
+  height: 600
+  margin_top: 80
+  margin_bottom: 80
+  margin_left: 100
+  margin_right: 100
+  event_spacing: 120
+  callout_text_gap: -4
+
+timeline:
+  line_width: 5
+  show_dates: true
+  show_times: true
+  horizontal_buffer: 50
+  avoid_text_overlap: true
+  min_text_spacing: 10    # Very small to allow true time-proportional positioning
+  min_callout_length: 40
+  max_callout_length: 200
+  callout_levels: 8
+  text_element_padding: 1
+
+columns:
+  timestamp_column: "timestamp"
+  use_detailed_styling: true
+  detailed_columns:
+    - name: "title"
+      font_family: "Georgia, serif"
+      font_size: 12
+      font_weight: "bold"
+      color: "#2c3e50"
+      css_class: "event-title"
+    - name: "timestamp"
+      font_family: "Courier New, monospace"
+      font_size: 10
+      font_weight: "normal"
+      color: "#e74c3c"
+      css_class: "event-timestamp"
+    - name: "notes"
+      font_family: "Arial, sans-serif"
+      font_size: 8
+      font_weight: "normal"
+      color: "#7f8c8d"
+      css_class: "event-notes"
+
+event_marker:
+  shape: "diamond"
+  size: 10
+  fill_color: "#3498db"
+  stroke_color: "#2980b9"
+  stroke_width: 1
