@@ -1,8 +1,5 @@
-version: 2
-
 run:
   timeout: 5m
-  modules-download-mode: readonly
 
 linters:
   enable:
@@ -10,11 +7,6 @@ linters:
     - govet
     - ineffassign
     - staticcheck
-
-linters-settings:
-  gosec:
-    excludes:
-      - G304 # File path provided as taint input
 
 issues:
   exclude-rules:
