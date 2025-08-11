@@ -94,6 +94,11 @@ debug-test: build test-data
 	./$(BINARY_NAME) --debug --csv test_timeline.csv --output debug_timeline.svg
 	@echo "Generated: debug_timeline.svg with debug output"
 
+# Test with sample data and detailed config
+sample-test: build
+	./$(BINARY_NAME) --csv close-events-sample.csv --config detailed-styling-config.yaml --output sample-output.svg
+	@echo "Generated: sample-output.svg using detailed configuration (demonstrates temporal clustering)"
+
 # Install development tools
 install-tools:
 	$(GOGET) honnef.co/go/tools/cmd/staticcheck@latest
@@ -137,6 +142,7 @@ help:
 	@echo "  test-data    - Create test CSV file"
 	@echo "  quick-test   - Build and run quick test"
 	@echo "  debug-test   - Build and run debug test"
+	@echo "  sample-test  - Build and run test with sample data and detailed config"
 	@echo "  quality      - Run full quality checks"
 	@echo "  dev          - Full development workflow"
 	@echo "  release-prep - Prepare release binaries"

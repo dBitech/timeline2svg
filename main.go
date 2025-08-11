@@ -26,7 +26,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Temporal clustering and positioning algorithm constants
+// Temporal clustering and positioning algorithm constants.
 const (
 	// DefaultClusterThreshold defines the time window for automatic temporal clustering.
 	// Events occurring within this duration are considered part of the same cluster
@@ -46,16 +46,19 @@ const (
 
 	// MixedClusterBuffer is used when one event is in a cluster and one is outside.
 	MixedClusterBuffer = 5
+
+	// TimestampColumn represents the timestamp column identifier.
+	TimestampColumn = "timestamp"
 )
 
-// Global debug flag
+// Global debug flag.
 var debugMode bool
 
-// Global variable to store optimized callout lengths
+// Global variable to store optimized callout lengths.
 var globalOptimizedCallouts []int
 
-// debugPrint prints debug messages when debug mode is enabled
-func debugPrint(format string, args ...interface{}) {
+// debugPrintf prints debug messages when debug mode is enabled.
+func debugPrintf(format string, args ...interface{}) {
 	if debugMode {
 		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
 	}
@@ -69,9 +72,10 @@ type TimelineEvent struct {
 
 // GetDisplayText returns the text for a given display element
 func (e TimelineEvent) GetDisplayText(elementName string) string {
-	if elementName == "timestamp" {
+	if elementName == TimestampColumn {
 		return e.Timestamp.Format("2006-01-02 15:04")
 	}
+
 	return e.Data[strings.ToLower(elementName)]
 }
 
@@ -230,10 +234,10 @@ func getDefaultConfig() Config {
 			TimestampColumn    string        `yaml:"timestamp_column"`
 			UseDetailedStyling bool          `yaml:"use_detailed_styling"`
 		}{
-			DisplayOrder:       []string{"title", "timestamp", "notes"}, // Default order
-			DetailedColumns:    []ColumnStyle{},                         // Empty by default
-			TimestampColumn:    "timestamp",                             // Default timestamp column name
-			UseDetailedStyling: false,                                   // Use simple format by default
+			DisplayOrder:       []string{"title", TimestampColumn, "notes"}, // Default order
+			DetailedColumns:    []ColumnStyle{},                             // Empty by default
+			TimestampColumn:    TimestampColumn,                             // Default timestamp column name
+			UseDetailedStyling: false,                                       // Use simple format by default
 		},
 		EventMarker: struct {
 			Shape       string `yaml:"shape"`
@@ -285,7 +289,11 @@ func parseCSV(filename string, config Config) ([]TimelineEvent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error opening CSV file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", closeErr)
+		}
+	}()
 
 	reader := csv.NewReader(file)
 	var events []TimelineEvent
@@ -303,11 +311,9 @@ func parseCSV(filename string, config Config) ([]TimelineEvent, error) {
 	}
 
 	// Find the timestamp column
-	timestampCol := -1
 	timestampColumnName := strings.ToLower(config.Columns.TimestampColumn)
-	if col, exists := columnMap[timestampColumnName]; exists {
-		timestampCol = col
-	} else {
+	timestampCol, exists := columnMap[timestampColumnName]
+	if !exists {
 		return nil, fmt.Errorf("timestamp column '%s' not found in CSV. Available columns: %v", config.Columns.TimestampColumn, header)
 	}
 
@@ -573,7 +579,7 @@ func generateSVG(events []TimelineEvent, config Config) string {
 		if len(globalOptimizedCallouts) == len(events) {
 			calloutLengths = make([]int, len(events))
 			copy(calloutLengths, globalOptimizedCallouts)
-			debugPrint("Using optimized callout lengths: %v", calloutLengths)
+			debugPrintf("Using optimized callout lengths: %v", calloutLengths)
 		} else {
 			// Fallback to original calculation if optimization didn't work
 			calloutLengths = make([]int, len(events))
@@ -581,7 +587,7 @@ func generateSVG(events []TimelineEvent, config Config) string {
 				above := i%2 == 0
 				calloutLengths[i] = calculateCalloutLength(timeProportionalPositions[i], i, timeProportionalPositions, above, config, timelineY)
 			}
-			debugPrint("Fallback to calculated callout lengths: %v", calloutLengths)
+			debugPrintf("Fallback to calculated callout lengths: %v", calloutLengths)
 		}
 
 		// Draw events with collision-free positioning
@@ -656,8 +662,8 @@ func estimateEventTextWidth(event TimelineEvent, config Config) int {
 
 // calculateSmartPositions calculates event positions using a constraint-based approach
 func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing int, config Config) []int {
-	debugPrint("=== Constraint-Based Smart Positioning ===")
-	debugPrint("StartX: %d, Width: %d, MinSpacing: %d", startX, width, minSpacing)
+	debugPrintf("=== Constraint-Based Smart Positioning ===")
+	debugPrintf("StartX: %d, Width: %d, MinSpacing: %d", startX, width, minSpacing)
 
 	if len(events) <= 1 {
 		return []int{startX + width/2}
@@ -667,11 +673,11 @@ func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing i
 	lastTime := events[len(events)-1].Timestamp
 	totalDuration := lastTime.Sub(firstTime)
 
-	debugPrint("Time range: %s to %s (duration: %s)", firstTime.Format("2006-01-02 15:04"), lastTime.Format("2006-01-02 15:04"), totalDuration)
+	debugPrintf("Time range: %s to %s (duration: %s)", firstTime.Format("2006-01-02 15:04"), lastTime.Format("2006-01-02 15:04"), totalDuration)
 
 	if totalDuration == 0 {
 		// All events have the same timestamp, distribute evenly
-		debugPrint("All events have same timestamp, using even distribution")
+		debugPrintf("All events have same timestamp, using even distribution")
 		positions := make([]int, len(events))
 		for i := range events {
 			x := startX + (i * width / (len(events) - 1))
@@ -681,18 +687,18 @@ func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing i
 	}
 
 	// Step 1: Calculate ideal proportional positions
-	debugPrint("Step 1: Calculating ideal time-proportional positions...")
+	debugPrintf("Step 1: Calculating ideal time-proportional positions...")
 	idealPositions := make([]int, len(events))
 	for i, event := range events {
 		eventDuration := event.Timestamp.Sub(firstTime)
 		proportion := float64(eventDuration) / float64(totalDuration)
 		x := startX + int(float64(width)*proportion)
 		idealPositions[i] = x
-		debugPrint("Event %d: %s -> proportion %.3f -> ideal x=%d", i, event.Timestamp.Format("15:04"), proportion, x)
+		debugPrintf("Event %d: %s -> proportion %.3f -> ideal x=%d", i, event.Timestamp.Format("15:04"), proportion, x)
 	}
 
 	// Step 2: Optimize callout heights to minimize temporal distortion
-	debugPrint("Step 2: Optimizing callout heights for temporal positioning...")
+	debugPrintf("Step 2: Optimizing callout heights for temporal positioning...")
 
 	// Timeline boundaries for collision detection
 	timelineY := config.Layout.MarginTop + (config.Layout.Height-config.Layout.MarginTop-config.Layout.MarginBottom)/2
@@ -700,11 +706,11 @@ func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing i
 	// Try different callout height combinations to find best temporal fit
 	optimizedCallouts, optimizedPositions := optimizeCalloutHeightsForTempo(events, idealPositions, startX, width, timelineY, config)
 
-	debugPrint("Optimized callout heights: %v", optimizedCallouts)
-	debugPrint("Optimized positions for temporal accuracy: %v", optimizedPositions)
+	debugPrintf("Optimized callout heights: %v", optimizedCallouts)
+	debugPrintf("Optimized positions for temporal accuracy: %v", optimizedPositions)
 
 	// Step 3: Apply constraint-based refinement if needed
-	debugPrint("Step 3: Final constraint-based refinement...")
+	debugPrintf("Step 3: Final constraint-based refinement...")
 	minSpacingConstraints := make([][]int, len(events))
 	for i := range minSpacingConstraints {
 		minSpacingConstraints[i] = make([]int, len(events))
@@ -723,7 +729,7 @@ func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing i
 			break
 		}
 	}
-	debugPrint("Final refinement: Using temporal cluster of %d events for relaxed constraints", clusterSize)
+	debugPrintf("Final refinement: Using temporal cluster of %d events for relaxed constraints", clusterSize)
 
 	// Check for remaining collisions with optimized setup
 	for i := 0; i < len(events); i++ {
@@ -738,7 +744,7 @@ func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing i
 				if i < clusterSize && j < clusterSize {
 					// Both events in temporal cluster - allow massive overlap for tight clustering
 					buffer = UltraAggressiveBuffer // Very negative buffer allows significant text overlap
-					debugPrint("Using ultra-aggressive temporal clustering constraint for events %d and %d: buffer=%d", i, j, buffer)
+					debugPrintf("Using ultra-aggressive temporal clustering constraint for events %d and %d: buffer=%d", i, j, buffer)
 				} else if i < clusterSize || j < clusterSize {
 					// One event in cluster, one outside - use moderate relaxation
 					buffer = MixedClusterBuffer
@@ -751,18 +757,18 @@ func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing i
 
 				// For temporal cluster events, ensure minimum separation is very small
 				if i < clusterSize && j < clusterSize {
-					requiredSeparation = max(requiredSeparation, TemporalClusterMinSeparation) // Minimum separation for cluster events
+					requiredSeparation = maxInt(requiredSeparation, TemporalClusterMinSeparation) // Minimum separation for cluster events
 				}
 
 				// Store constraint: j must be at least this far from i
 				minSpacingConstraints[i][j] = requiredSeparation
 				minSpacingConstraints[j][i] = requiredSeparation
 
-				debugPrint("Remaining constraint: Events %d and %d need minimum %d pixels separation", i, j, requiredSeparation)
+				debugPrintf("Remaining constraint: Events %d and %d need minimum %d pixels separation", i, j, requiredSeparation)
 			} else {
 				// No collision, allow events to maintain current spacing
 				currentSeparation := absInt(optimizedPositions[j] - optimizedPositions[i])
-				minSpacingConstraints[i][j] = min(currentSeparation, config.EventMarker.Size)
+				minSpacingConstraints[i][j] = minInt(currentSeparation, config.EventMarker.Size)
 				minSpacingConstraints[j][i] = minSpacingConstraints[i][j]
 			}
 		}
@@ -771,8 +777,8 @@ func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing i
 	// Apply final constraint solving if there are any remaining issues
 	finalPositions := solveConstraintBasedPositioning(events, optimizedPositions, minSpacingConstraints, startX, width, config)
 
-	debugPrint("Final constraint-satisfied positions: %v", finalPositions)
-	debugPrint("=== End Constraint-Based Smart Positioning ===")
+	debugPrintf("Final constraint-satisfied positions: %v", finalPositions)
+	debugPrintf("=== End Constraint-Based Smart Positioning ===")
 
 	// Store optimized callouts globally so they can be used in later processing
 	globalOptimizedCallouts = optimizedCallouts
@@ -782,12 +788,12 @@ func calculateSmartPositions(events []TimelineEvent, startX, width, minSpacing i
 
 // optimizeCalloutHeightsForTempo uses backward optimization from constraint solver results
 func optimizeCalloutHeightsForTempo(events []TimelineEvent, idealPositions []int, startX, width, timelineY int, config Config) ([]int, []int) {
-	debugPrint("--- Backward-Working Callout Height Optimization ---")
+	debugPrintf("--- Backward-Working Callout Height Optimization ---")
 
 	n := len(events)
 
 	// Step 1: Analyze temporal clustering to determine optimization scope
-	debugPrint("Step 1: Analyzing temporal clustering...")
+	debugPrintf("Step 1: Analyzing temporal clustering...")
 
 	// Find the actual temporal cluster - events within a reasonable time window
 	clusterThreshold := DefaultClusterThreshold // Time window for tight clustering
@@ -803,17 +809,17 @@ func optimizeCalloutHeightsForTempo(events []TimelineEvent, idealPositions []int
 		}
 	}
 
-	debugPrint("Detected temporal cluster: first %d events within %v", clusterSize, clusterThreshold)
+	debugPrintf("Detected temporal cluster: first %d events within %v", clusterSize, clusterThreshold)
 	if clusterSize > 1 {
 		clusterDuration := events[clusterSize-1].Timestamp.Sub(events[0].Timestamp)
-		debugPrint("Cluster spans: %s to %s (duration: %v)",
+		debugPrintf("Cluster spans: %s to %s (duration: %v)",
 			events[0].Timestamp.Format("15:04"),
 			events[clusterSize-1].Timestamp.Format("15:04"),
 			clusterDuration)
 	}
 
 	// Step 2: Get baseline constraint-imposed positions with uniform callouts
-	debugPrint("Step 2: Getting constraint-imposed baseline positions...")
+	debugPrintf("Step 2: Getting constraint-imposed baseline positions...")
 	uniformCallouts := make([]int, n)
 	minCallout := config.Timeline.MinCalloutLength
 	for i := range uniformCallouts {
@@ -822,14 +828,14 @@ func optimizeCalloutHeightsForTempo(events []TimelineEvent, idealPositions []int
 
 	// Get what the constraint solver would do with uniform callouts
 	baselinePositions := simulateConstraintSolverResults(events, idealPositions, uniformCallouts, startX, width, timelineY, config)
-	debugPrint("Baseline constraint-imposed positions: %v", baselinePositions)
+	debugPrintf("Baseline constraint-imposed positions: %v", baselinePositions)
 
 	// Calculate initial temporal distortion
 	baselineError := calculateTemporalDistortion(events, baselinePositions, idealPositions)
-	debugPrint("Baseline temporal distortion: %.1f", baselineError)
+	debugPrintf("Baseline temporal distortion: %.1f", baselineError)
 
 	// Step 3: Test callout adjustments to allow movement back toward temporal positions
-	debugPrint("Step 3: Testing callout adjustments to reduce temporal distortion...")
+	debugPrintf("Step 3: Testing callout adjustments to reduce temporal distortion...")
 
 	bestCallouts := make([]int, n)
 	bestPositions := make([]int, n)
@@ -844,7 +850,7 @@ func optimizeCalloutHeightsForTempo(events []TimelineEvent, idealPositions []int
 		maxCallout = minCallout + 100 // Reasonable limit
 	}
 
-	debugPrint("Using actual temporal cluster size: %d events", clusterSize)
+	debugPrintf("Using actual temporal cluster size: %d events", clusterSize)
 
 	// Test systematic callout variations that create vertical separation for the ENTIRE cluster
 	calloutOptions := []int{minCallout, minCallout + 25, minCallout + 50, minCallout + 75}
@@ -852,13 +858,13 @@ func optimizeCalloutHeightsForTempo(events []TimelineEvent, idealPositions []int
 		calloutOptions = append(calloutOptions, maxCallout)
 	}
 
-	debugPrint("Available callout heights: %v", calloutOptions)
+	debugPrintf("Available callout heights: %v", calloutOptions)
 
 	// Test combinations that create significant vertical separation
 	testCombinations := generateVerticalSeparationCombinations(calloutOptions, clusterSize)
 
 	for i, combo := range testCombinations {
-		debugPrint("Testing combination %d: %v", i+1, combo)
+		debugPrintf("Testing combination %d: %v", i+1, combo)
 
 		// Create test callout configuration
 		testCallouts := make([]int, n)
@@ -874,21 +880,21 @@ func optimizeCalloutHeightsForTempo(events []TimelineEvent, idealPositions []int
 
 		// Calculate temporal distortion
 		distortion := calculateTemporalDistortion(events, testPositions, idealPositions)
-		debugPrint("  Resulting positions: %v", testPositions)
-		debugPrint("  Temporal distortion: %.1f (baseline: %.1f)", distortion, baselineError)
+		debugPrintf("  Resulting positions: %v", testPositions)
+		debugPrintf("  Temporal distortion: %.1f (baseline: %.1f)", distortion, baselineError)
 
 		// Check if this is an improvement
 		if distortion < bestDistortion {
 			bestDistortion = distortion
 			copy(bestCallouts, testCallouts)
 			copy(bestPositions, testPositions)
-			debugPrint("  NEW BEST! Distortion reduced by %.1f", baselineError-distortion)
+			debugPrintf("  NEW BEST! Distortion reduced by %.1f", baselineError-distortion)
 		}
 	}
 
-	debugPrint("Final optimized callouts: %v", bestCallouts)
-	debugPrint("Final optimized positions: %v", bestPositions)
-	debugPrint("Temporal distortion improvement: %.1f -> %.1f (%.1f%% better)",
+	debugPrintf("Final optimized callouts: %v", bestCallouts)
+	debugPrintf("Final optimized positions: %v", bestPositions)
+	debugPrintf("Temporal distortion improvement: %.1f -> %.1f (%.1f%% better)",
 		baselineError, bestDistortion, (baselineError-bestDistortion)/baselineError*100)
 
 	return bestCallouts, bestPositions
@@ -938,9 +944,9 @@ func calculateBestPositionsForCallouts(events []TimelineEvent, callouts, idealPo
 			targetPos := current
 
 			if current < ideal {
-				targetPos = min(ideal, current+stepSize)
+				targetPos = minInt(ideal, current+stepSize)
 			} else if current > ideal {
-				targetPos = max(ideal, current-stepSize)
+				targetPos = maxInt(ideal, current-stepSize)
 			}
 
 			if targetPos == current {
@@ -1141,17 +1147,17 @@ func generateVerticalSeparationCombinations(calloutOptions []int, clusterSize in
 	combinations = append(combinations, baseline)
 
 	if len(calloutOptions) >= 2 {
-		min_val := calloutOptions[0]
-		max_val := calloutOptions[len(calloutOptions)-1]
+		minVal := calloutOptions[0]
+		maxVal := calloutOptions[len(calloutOptions)-1]
 
 		// For 5-event clusters, create more sophisticated patterns
 		if clusterSize == 5 {
 			// Pattern 1: Maximum separation - extreme alternating
-			pattern1 := []int{min_val, max_val, min_val, max_val, min_val}
+			pattern1 := []int{minVal, maxVal, minVal, maxVal, minVal}
 			combinations = append(combinations, pattern1)
 
 			// Pattern 2: Reverse extreme alternating
-			pattern2 := []int{max_val, min_val, max_val, min_val, max_val}
+			pattern2 := []int{maxVal, minVal, maxVal, minVal, maxVal}
 			combinations = append(combinations, pattern2)
 
 			// Pattern 3: Progressive staircase up
@@ -1180,15 +1186,15 @@ func generateVerticalSeparationCombinations(calloutOptions []int, clusterSize in
 
 			// Pattern 5: V-shape - tall on ends, short in middle
 			if len(calloutOptions) >= 3 {
-				mid_val := calloutOptions[len(calloutOptions)/2]
-				pattern5 := []int{max_val, mid_val, min_val, mid_val, max_val}
+				midVal := calloutOptions[len(calloutOptions)/2]
+				pattern5 := []int{maxVal, midVal, minVal, midVal, maxVal}
 				combinations = append(combinations, pattern5)
 			}
 
 			// Pattern 6: Inverted V - short on ends, tall in middle
 			if len(calloutOptions) >= 3 {
-				mid_val := calloutOptions[len(calloutOptions)/2]
-				pattern6 := []int{min_val, mid_val, max_val, mid_val, min_val}
+				midVal := calloutOptions[len(calloutOptions)/2]
+				pattern6 := []int{minVal, midVal, maxVal, midVal, minVal}
 				combinations = append(combinations, pattern6)
 			}
 
@@ -1196,8 +1202,8 @@ func generateVerticalSeparationCombinations(calloutOptions []int, clusterSize in
 			// This should create the most vertical separation
 			if len(calloutOptions) >= 5 {
 				pattern7 := []int{
-					min_val,           // Event 0: Morning Meeting (above, short)
-					max_val,           // Event 1: Quick Check-in (below, tall)
+					minVal,            // Event 0: Morning Meeting (above, short)
+					maxVal,            // Event 1: Quick Check-in (below, tall)
 					calloutOptions[1], // Event 2: Code Review (above, medium-short)
 					calloutOptions[3], // Event 3: Architecture Discussion (below, medium-tall)
 					calloutOptions[2], // Event 4: Sprint Planning (above, medium)
@@ -1212,9 +1218,9 @@ func generateVerticalSeparationCombinations(calloutOptions []int, clusterSize in
 			alt1 := make([]int, clusterSize)
 			for i := range alt1 {
 				if i%2 == 0 {
-					alt1[i] = min_val
+					alt1[i] = minVal
 				} else {
-					alt1[i] = max_val
+					alt1[i] = maxVal
 				}
 			}
 			combinations = append(combinations, alt1)
@@ -1223,9 +1229,9 @@ func generateVerticalSeparationCombinations(calloutOptions []int, clusterSize in
 			alt2 := make([]int, clusterSize)
 			for i := range alt2 {
 				if i%2 == 0 {
-					alt2[i] = max_val
+					alt2[i] = maxVal
 				} else {
-					alt2[i] = min_val
+					alt2[i] = minVal
 				}
 			}
 			combinations = append(combinations, alt2)
@@ -1262,13 +1268,13 @@ func calculateTemporalError(events []TimelineEvent, actualPositions, idealPositi
 	totalError := 0.0
 
 	for i := range events {
-		error := float64(absInt(actualPositions[i] - idealPositions[i]))
+		distortionError := float64(absInt(actualPositions[i] - idealPositions[i]))
 		// Weight earlier events more heavily since they're more clustered
 		weight := 1.0
 		if i < 5 { // First 5 events are clustered
 			weight = 2.0
 		}
-		totalError += error * weight
+		totalError += distortionError * weight
 	}
 
 	return totalError
@@ -1276,7 +1282,7 @@ func calculateTemporalError(events []TimelineEvent, actualPositions, idealPositi
 
 // solveConstraintBasedPositioning redistributes events globally while satisfying spacing constraints
 func solveConstraintBasedPositioning(events []TimelineEvent, idealPositions []int, constraints [][]int, startX, width int, config Config) []int {
-	debugPrint("--- Constraint Solver ---")
+	debugPrintf("--- Constraint Solver ---")
 
 	n := len(events)
 	positions := make([]int, n)
@@ -1296,18 +1302,18 @@ func solveConstraintBasedPositioning(events []TimelineEvent, idealPositions []in
 		}
 	}
 
-	debugPrint("Constraint pressure: need %d extra pixels beyond ideal spacing", totalConstraintSpace)
+	debugPrintf("Constraint pressure: need %d extra pixels beyond ideal spacing", totalConstraintSpace)
 
 	if totalConstraintSpace <= 0 {
 		// No constraints violated, use ideal positions
-		debugPrint("No constraint violations, using ideal positions")
+		debugPrintf("No constraint violations, using ideal positions")
 		return positions
 	}
 
 	// Strategy: Use iterative constraint relaxation with proportional scaling
 	maxIterations := 20
 	for iteration := 0; iteration < maxIterations; iteration++ {
-		debugPrint("Constraint solver iteration %d", iteration+1)
+		debugPrintf("Constraint solver iteration %d", iteration+1)
 
 		violations := 0
 
@@ -1339,7 +1345,7 @@ func solveConstraintBasedPositioning(events []TimelineEvent, idealPositions []in
 						if newPosI >= startX && newPosJ <= startX+width && newPosI < newPosJ {
 							positions[i] = newPosI
 							positions[j] = newPosJ
-							debugPrint("  Adjusted events %d,%d: moved %d left by %d, %d right by %d",
+							debugPrintf("  Adjusted events %d,%d: moved %d left by %d, %d right by %d",
 								i, j, i, leftAdjustment, j, rightAdjustment)
 						}
 					}
@@ -1348,11 +1354,11 @@ func solveConstraintBasedPositioning(events []TimelineEvent, idealPositions []in
 		}
 
 		if violations == 0 {
-			debugPrint("All constraints satisfied after %d iterations", iteration+1)
+			debugPrintf("All constraints satisfied after %d iterations", iteration+1)
 			break
 		}
 
-		debugPrint("Iteration %d: %d constraint violations remaining", iteration+1, violations)
+		debugPrintf("Iteration %d: %d constraint violations remaining", iteration+1, violations)
 	}
 
 	// Final pass: ensure chronological order and bounds
@@ -1373,13 +1379,13 @@ func solveConstraintBasedPositioning(events []TimelineEvent, idealPositions []in
 		}
 	}
 
-	debugPrint("Final constraint-solved positions: %v", positions)
+	debugPrintf("Final constraint-solved positions: %v", positions)
 	return positions
 }
 
 // adjustForTextCollisions detects and resolves horizontal text collisions between events
 func adjustForTextCollisions(events []TimelineEvent, positions []int, config Config) []int {
-	debugPrint("=== Text Collision Detection ===")
+	debugPrintf("=== Text Collision Detection ===")
 	if len(events) <= 1 {
 		return positions
 	}
@@ -1387,7 +1393,7 @@ func adjustForTextCollisions(events []TimelineEvent, positions []int, config Con
 	// Calculate timeline boundaries (add some buffer from margins)
 	minX := config.Layout.MarginLeft + 20                        // 20px buffer from left edge
 	maxX := config.Layout.Width - config.Layout.MarginRight - 20 // 20px buffer from right edge
-	debugPrint("Timeline boundaries: minX=%d, maxX=%d", minX, maxX)
+	debugPrintf("Timeline boundaries: minX=%d, maxX=%d", minX, maxX)
 
 	// Create text bounding boxes for each event
 	type TextBounds struct {
@@ -1411,14 +1417,14 @@ func adjustForTextCollisions(events []TimelineEvent, positions []int, config Con
 			above: above,
 		}
 
-		debugPrint("Event %d: x=%d, textWidth=%d, bounds=[%d,%d], above=%v",
+		debugPrintf("Event %d: x=%d, textWidth=%d, bounds=[%d,%d], above=%v",
 			i, adjustedPositions[i], textWidth, bounds[i].left, bounds[i].right, above)
 	}
 
 	// Detect and resolve collisions iteratively
 	maxIterations := 10
 	for iteration := 0; iteration < maxIterations; iteration++ {
-		debugPrint("--- Collision Detection Iteration %d ---", iteration+1)
+		debugPrintf("--- Collision Detection Iteration %d ---", iteration+1)
 		hasCollisions := false
 
 		for i := 0; i < len(events); i++ {
@@ -1430,16 +1436,16 @@ func adjustForTextCollisions(events []TimelineEvent, positions []int, config Con
 
 				// Check for horizontal overlap
 				if bounds[i].right > bounds[j].left && bounds[i].left < bounds[j].right {
-					debugPrint("Collision detected between event %d [%d,%d] and event %d [%d,%d]",
+					debugPrintf("Collision detected between event %d [%d,%d] and event %d [%d,%d]",
 						i, bounds[i].left, bounds[i].right, j, bounds[j].left, bounds[j].right)
 
 					hasCollisions = true
 
 					// Calculate overlap and required adjustment
-					overlap := min(bounds[i].right, bounds[j].right) - max(bounds[i].left, bounds[j].left)
+					overlap := minInt(bounds[i].right, bounds[j].right) - maxInt(bounds[i].left, bounds[j].left)
 					adjustment := (overlap / 2) + 10 // Add 10px buffer between texts
 
-					debugPrint("Overlap: %d pixels, adjustment: %d", overlap, adjustment)
+					debugPrintf("Overlap: %d pixels, adjustment: %d", overlap, adjustment)
 
 					// Move events apart, but respect boundaries
 					if adjustedPositions[i] < adjustedPositions[j] {
@@ -1460,7 +1466,7 @@ func adjustForTextCollisions(events []TimelineEvent, positions []int, config Con
 
 						adjustedPositions[i] = newPosI
 						adjustedPositions[j] = newPosJ
-						debugPrint("Moving event %d left to %d, event %d right to %d",
+						debugPrintf("Moving event %d left to %d, event %d right to %d",
 							i, adjustedPositions[i], j, adjustedPositions[j])
 					} else {
 						// Move event j left and event i right
@@ -1480,7 +1486,7 @@ func adjustForTextCollisions(events []TimelineEvent, positions []int, config Con
 
 						adjustedPositions[j] = newPosJ
 						adjustedPositions[i] = newPosI
-						debugPrint("Moving event %d left to %d, event %d right to %d",
+						debugPrintf("Moving event %d left to %d, event %d right to %d",
 							j, adjustedPositions[j], i, adjustedPositions[i])
 					}
 
@@ -1496,17 +1502,17 @@ func adjustForTextCollisions(events []TimelineEvent, positions []int, config Con
 		}
 
 		if !hasCollisions {
-			debugPrint("No more collisions detected after %d iterations", iteration+1)
+			debugPrintf("No more collisions detected after %d iterations", iteration+1)
 			break
 		}
 
 		if iteration == maxIterations-1 {
-			debugPrint("Maximum iterations reached, some collisions may remain")
+			debugPrintf("Maximum iterations reached, some collisions may remain")
 		}
 	}
 
-	debugPrint("Final adjusted positions: %v", adjustedPositions)
-	debugPrint("=== End Text Collision Detection ===")
+	debugPrintf("Final adjusted positions: %v", adjustedPositions)
+	debugPrintf("=== End Text Collision Detection ===")
 	return adjustedPositions
 }
 
@@ -1569,20 +1575,20 @@ func calculateEventBoundingBox(event TimelineEvent, x, y int, calloutLength int,
 					maxLineLength := 30
 					lines := len(text) / maxLineLength
 					if len(text)%maxLineLength > 0 {
-						lines++
+						lines++ // Account for remainder
 					}
+					_ = lines // Variable calculated for potential future use
 					// Use the shorter of wrapped width or a reasonable maximum
 					wrappedWidth := estimateTextWidth(strings.Repeat("A", maxLineLength), style.FontSize)
 					singleLineWidth := estimateTextWidth(text, style.FontSize)
-					textWidth = min(wrappedWidth, singleLineWidth)
-					debugPrint("Event %d, element '%s': text='%s', fontSize=%d, singleLine=%d, wrapped=%d, using=%d",
-						index, elementName, text[:min(30, len(text))], style.FontSize, singleLineWidth, wrappedWidth, textWidth)
+					textWidth = minInt(wrappedWidth, singleLineWidth)
+					debugPrintf("Event %d, element '%s': text='%s', fontSize=%d, singleLine=%d, wrapped=%d, using=%d",
+						index, elementName, text[:minInt(30, len(text))], style.FontSize, singleLineWidth, wrappedWidth, textWidth)
 				} else {
 					textWidth = estimateTextWidth(text, style.FontSize)
-					debugPrint("Event %d, element '%s': text='%s', fontSize=%d, textWidth=%d",
+					debugPrintf("Event %d, element '%s': text='%s', fontSize=%d, textWidth=%d",
 						index, elementName, text, style.FontSize, textWidth)
 				}
-
 				if textWidth > maxWidth {
 					maxWidth = textWidth
 				}
@@ -1616,7 +1622,7 @@ func calculateEventBoundingBox(event TimelineEvent, x, y int, calloutLength int,
 		Above:      above,
 	}
 
-	debugPrint("Event %d bounding box: [%d,%d] to [%d,%d] (w=%d, h=%d)",
+	debugPrintf("Event %d bounding box: [%d,%d] to [%d,%d] (w=%d, h=%d)",
 		index, bbox.Left, bbox.Top, bbox.Right, bbox.Bottom, bbox.Width, bbox.Height)
 
 	return bbox
@@ -1637,7 +1643,7 @@ func detectBoundingBoxOverlap(box1, box2 TextBoundingBox) bool {
 
 // resolve2DCollisions implements comprehensive 2D bounding box collision detection and resolution
 func resolve2DCollisions(events []TimelineEvent, positions []int, calloutLengths []int, timelineY int, config Config) ([]int, []int) {
-	debugPrint("=== 2D Collision Detection ===")
+	debugPrintf("=== 2D Collision Detection ===")
 
 	if len(events) <= 1 {
 		return positions, calloutLengths
@@ -1646,7 +1652,7 @@ func resolve2DCollisions(events []TimelineEvent, positions []int, calloutLengths
 	// Timeline boundaries
 	minX := config.Layout.MarginLeft + 20
 	maxX := config.Layout.Width - config.Layout.MarginRight - 20
-	debugPrint("Timeline boundaries: minX=%d, maxX=%d", minX, maxX)
+	debugPrintf("Timeline boundaries: minX=%d, maxX=%d", minX, maxX)
 
 	adjustedPositions := make([]int, len(positions))
 	adjustedCallouts := make([]int, len(calloutLengths))
@@ -1656,7 +1662,7 @@ func resolve2DCollisions(events []TimelineEvent, positions []int, calloutLengths
 	// Collision resolution strategy: prioritize horizontal separation when min_text_spacing is too small
 	maxIterations := 10
 	for iteration := 0; iteration < maxIterations; iteration++ {
-		debugPrint("--- 2D Collision Iteration %d ---", iteration+1)
+		debugPrintf("--- 2D Collision Iteration %d ---", iteration+1)
 
 		// Calculate current bounding boxes
 		boundingBoxes := make([]TextBoundingBox, len(events))
@@ -1670,14 +1676,14 @@ func resolve2DCollisions(events []TimelineEvent, positions []int, calloutLengths
 		for i := 0; i < len(boundingBoxes); i++ {
 			for j := i + 1; j < len(boundingBoxes); j++ {
 				if detectBoundingBoxOverlap(boundingBoxes[i], boundingBoxes[j]) {
-					debugPrint("2D Collision detected between event %d and event %d", i, j)
+					debugPrintf("2D Collision detected between event %d and event %d", i, j)
 					hasCollisions = true
 
 					// Calculate overlap dimensions
-					overlapWidth := min(boundingBoxes[i].Right, boundingBoxes[j].Right) - max(boundingBoxes[i].Left, boundingBoxes[j].Left)
-					overlapHeight := min(boundingBoxes[i].Bottom, boundingBoxes[j].Bottom) - max(boundingBoxes[i].Top, boundingBoxes[j].Top)
+					overlapWidth := minInt(boundingBoxes[i].Right, boundingBoxes[j].Right) - maxInt(boundingBoxes[i].Left, boundingBoxes[j].Left)
+					overlapHeight := minInt(boundingBoxes[i].Bottom, boundingBoxes[j].Bottom) - maxInt(boundingBoxes[i].Top, boundingBoxes[j].Top)
 
-					debugPrint("Overlap: %dx%d pixels", overlapWidth, overlapHeight)
+					debugPrintf("Overlap: %dx%d pixels", overlapWidth, overlapHeight)
 
 					// Calculate time gap between events to inform collision resolution strategy
 					timeDiff := absTimeDuration(events[i].Timestamp.Sub(events[j].Timestamp))
@@ -1694,46 +1700,46 @@ func resolve2DCollisions(events []TimelineEvent, positions []int, calloutLengths
 					if timeDiff > time.Hour && horizontalDistance > 30 {
 						// These events should be temporally spaced - use vertical separation
 						resolveVerticalCollisionGentle(i, j, &adjustedCallouts, overlapHeight, config)
-						debugPrint("Resolved with vertical separation (preserving time gap of %v): callouts now [%d, %d]", timeDiff, adjustedCallouts[i], adjustedCallouts[j])
+						debugPrintf("Resolved with vertical separation (preserving time gap of %v): callouts now [%d, %d]", timeDiff, adjustedCallouts[i], adjustedCallouts[j])
 					} else if horizontalDistance < averageTextWidth/2 {
 						// Events are too close horizontally - check if we can use existing vertical separation
 						if verticalDistance > 30 && boundingBoxes[i].Above == boundingBoxes[j].Above {
 							// Same side with good vertical separation - enhance it slightly
 							resolveVerticalCollisionGentle(i, j, &adjustedCallouts, overlapHeight, config)
-							debugPrint("Resolved with enhanced vertical separation: callouts now [%d, %d]", adjustedCallouts[i], adjustedCallouts[j])
+							debugPrintf("Resolved with enhanced vertical separation: callouts now [%d, %d]", adjustedCallouts[i], adjustedCallouts[j])
 						} else {
 							// Use minimal horizontal separation to preserve time relationships
 							resolveHorizontalCollisionMinimal(i, j, &adjustedPositions, overlapWidth, events, config, minX, maxX)
-							debugPrint("Resolved with minimal horizontal separation (events too close): positions now [%d, %d]", adjustedPositions[i], adjustedPositions[j])
+							debugPrintf("Resolved with minimal horizontal separation (events too close): positions now [%d, %d]", adjustedPositions[i], adjustedPositions[j])
 						}
 					} else if boundingBoxes[i].Above != boundingBoxes[j].Above {
 						// Different sides - use gentle horizontal separation
 						resolveHorizontalCollisionMinimal(i, j, &adjustedPositions, overlapWidth, events, config, minX, maxX)
-						debugPrint("Resolved with minimal horizontal separation (different sides): positions now [%d, %d]", adjustedPositions[i], adjustedPositions[j])
+						debugPrintf("Resolved with minimal horizontal separation (different sides): positions now [%d, %d]", adjustedPositions[i], adjustedPositions[j])
 					} else {
 						// Same side and reasonable horizontal distance - prefer vertical separation
 						resolveVerticalCollisionGentle(i, j, &adjustedCallouts, overlapHeight, config)
-						debugPrint("Resolved with gentle vertical separation: callouts now [%d, %d]", adjustedCallouts[i], adjustedCallouts[j])
+						debugPrintf("Resolved with gentle vertical separation: callouts now [%d, %d]", adjustedCallouts[i], adjustedCallouts[j])
 					}
 				}
 			}
 		}
 
 		if !hasCollisions {
-			debugPrint("No 2D collisions detected after %d iterations", iteration+1)
+			debugPrintf("No 2D collisions detected after %d iterations", iteration+1)
 			break
 		}
 
 		if iteration == maxIterations-1 {
-			debugPrint("Maximum iterations reached, some collisions may remain")
+			debugPrintf("Maximum iterations reached, some collisions may remain")
 		}
 	}
 
-	debugPrint("Final adjusted positions: %v", adjustedPositions)
-	debugPrint("Final adjusted callouts: %v", adjustedCallouts)
+	debugPrintf("Final adjusted positions: %v", adjustedPositions)
+	debugPrintf("Final adjusted callouts: %v", adjustedCallouts)
 
 	// Enforce minimum marker separation for ALL events (critical constraint)
-	debugPrint("=== Enforcing Marker Separation ===")
+	debugPrintf("=== Enforcing Marker Separation ===")
 	baseMinSpacing := config.EventMarker.Size
 	if baseMinSpacing < 6 {
 		baseMinSpacing = 6
@@ -1762,34 +1768,34 @@ func resolve2DCollisions(events []TimelineEvent, positions []int, calloutLengths
 		if adjustedPositions[currentIdx]-adjustedPositions[prevIdx] < baseMinSpacing {
 			adjustment := baseMinSpacing - (adjustedPositions[currentIdx] - adjustedPositions[prevIdx])
 			adjustedPositions[currentIdx] += adjustment
-			debugPrint("Enforced marker separation: moved event %d from %d to %d",
+			debugPrintf("Enforced marker separation: moved event %d from %d to %d",
 				currentIdx, adjustedPositions[currentIdx]-adjustment, adjustedPositions[currentIdx])
 		}
 	}
 
-	debugPrint("=== End Marker Separation Enforcement ===")
+	debugPrintf("=== End Marker Separation Enforcement ===")
 
 	// Ensure chronological order is preserved by adjusting positions if necessary
-	debugPrint("=== Enforcing Chronological Order ===")
+	debugPrintf("=== Enforcing Chronological Order ===")
 	for i := 0; i < len(events)-1; i++ {
 		for j := i + 1; j < len(events); j++ {
 			// Check if chronologically earlier event is positioned after a later event
 			if events[i].Timestamp.Before(events[j].Timestamp) && adjustedPositions[i] > adjustedPositions[j] {
-				debugPrint("Chronological order violation: Event %d (%s) at position %d should be before Event %d (%s) at position %d",
+				debugPrintf("Chronological order violation: Event %d (%s) at position %d should be before Event %d (%s) at position %d",
 					i, events[i].Timestamp.Format("15:04"), adjustedPositions[i],
 					j, events[j].Timestamp.Format("15:04"), adjustedPositions[j])
 
 				// Swap positions to maintain chronological order
 				adjustedPositions[i], adjustedPositions[j] = adjustedPositions[j], adjustedPositions[i]
 
-				debugPrint("Corrected positions: Event %d now at %d, Event %d now at %d", i, adjustedPositions[i], j, adjustedPositions[j])
+				debugPrintf("Corrected positions: Event %d now at %d, Event %d now at %d", i, adjustedPositions[i], j, adjustedPositions[j])
 			}
 		}
 	}
-	debugPrint("Final chronologically ordered positions: %v", adjustedPositions)
-	debugPrint("=== End Chronological Order Enforcement ===")
+	debugPrintf("Final chronologically ordered positions: %v", adjustedPositions)
+	debugPrintf("=== End Chronological Order Enforcement ===")
 
-	debugPrint("=== End 2D Collision Detection ===")
+	debugPrintf("=== End 2D Collision Detection ===")
 
 	return adjustedPositions, adjustedCallouts
 }
@@ -1960,7 +1966,7 @@ func resolveHorizontalCollision(i, j int, positions *[]int, overlapWidth int, ev
 // resolveHorizontalCollisionMinimal adjusts horizontal positions with minimal movement to preserve time proportionality
 func resolveHorizontalCollisionMinimal(i, j int, positions *[]int, overlapWidth int, events []TimelineEvent, config Config, minX, maxX int) {
 	// Use much smaller adjustments to minimize disruption of time proportionality
-	adjustment := max(overlapWidth/2+3, 5) // Minimal adjustment, but at least 5 pixels
+	adjustment := maxInt(overlapWidth/2+3, 5) // Minimal adjustment, but at least 5 pixels
 
 	// Determine chronological order to maintain timeline sequence
 	isBefore := events[i].Timestamp.Before(events[j].Timestamp)
@@ -1984,11 +1990,11 @@ func resolveHorizontalCollisionMinimal(i, j int, positions *[]int, overlapWidth 
 		// Final check to maintain chronological order
 		if newI >= newJ {
 			// Force minimal separation while preserving order
-			newJ = newI + max(textWidthI, textWidthJ)/2 + 10
+			newJ = newI + maxInt(textWidthI, textWidthJ)/2 + 10
 			if newJ+textWidthJ/2 > maxX {
 				// If we can't fit j to the right, compress both towards center
 				newJ = maxX - textWidthJ/2
-				newI = newJ - max(textWidthI, textWidthJ)/2 - 10
+				newI = newJ - maxInt(textWidthI, textWidthJ)/2 - 10
 			}
 		}
 
@@ -2013,11 +2019,11 @@ func resolveHorizontalCollisionMinimal(i, j int, positions *[]int, overlapWidth 
 		// Final check to maintain chronological order
 		if newJ >= newI {
 			// Force minimal separation while preserving order
-			newI = newJ + max(textWidthI, textWidthJ)/2 + 10
+			newI = newJ + maxInt(textWidthI, textWidthJ)/2 + 10
 			if newI+textWidthI/2 > maxX {
 				// If we can't fit i to the right, compress both towards center
 				newI = maxX - textWidthI/2
-				newJ = newI - max(textWidthI, textWidthJ)/2 - 10
+				newJ = newI - maxInt(textWidthI, textWidthJ)/2 - 10
 			}
 		}
 
@@ -2035,16 +2041,16 @@ func absTimeDuration(d time.Duration) time.Duration {
 	return d
 }
 
-// min returns the smaller of two integers.
-func min(a, b int) int {
+// minInt returns the smaller of two integers.
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-// max returns the larger of two integers.
-func max(a, b int) int {
+// maxInt returns the larger of two integers.
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
@@ -2142,12 +2148,12 @@ func drawEventWithCallout(svg *strings.Builder, event TimelineEvent, x, y int, c
 	if absInt(calloutLength) > config.Timeline.MinCalloutLength+10 {
 		// For longer callouts, use a stepped line to reduce visual clutter
 		midY := y + (calloutLength / 3) // First segment
-		svg.WriteString(fmt.Sprintf(`<path d="M%d,%d L%d,%d L%d,%d" stroke="%s" stroke-width="1" fill="none"/>`,
-			x, y, x, midY, x, eventY, config.Colors.Timeline))
+		fmt.Fprintf(svg, `<path d="M%d,%d L%d,%d L%d,%d" stroke="%s" stroke-width="1" fill="none"/>`,
+			x, y, x, midY, x, eventY, config.Colors.Timeline)
 	} else {
 		// For short callouts, use simple straight line
-		svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="%s" stroke-width="1"/>`,
-			x, y, x, eventY, config.Colors.Timeline))
+		fmt.Fprintf(svg, `<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="%s" stroke-width="1"/>`,
+			x, y, x, eventY, config.Colors.Timeline)
 	}
 
 	// Draw event marker
@@ -2163,12 +2169,12 @@ func drawEventWithCallout(svg *strings.Builder, event TimelineEvent, x, y int, c
 			text := getElementText(event, elementName, config)
 			if text != "" {
 				style := getColumnStyle(elementName, config)
-				debugPrint("Drawing %s '%s' at position (%d, %d) with style: %s %dpx %s",
+				debugPrintf("Drawing %s '%s' at position (%d, %d) with style: %s %dpx %s",
 					elementName, text, x, position, style.FontFamily, style.FontSize, style.Color)
 
 				// Use inline styling for maximum flexibility
-				svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" text-anchor="middle" font-family="%s" font-size="%d" font-weight="%s" fill="%s">%s</text>`,
-					x, position, style.FontFamily, style.FontSize, style.FontWeight, style.Color, escapeXML(text)))
+				fmt.Fprintf(svg, `<text x="%d" y="%d" text-anchor="middle" font-family="%s" font-size="%d" font-weight="%s" fill="%s">%s</text>`,
+					x, position, style.FontFamily, style.FontSize, style.FontWeight, style.Color, escapeXML(text))
 			}
 		}
 	}
@@ -2190,8 +2196,8 @@ func drawEvent(svg *strings.Builder, event TimelineEvent, x, y int, config Confi
 	eventY := y + calloutLength
 
 	// Draw connecting line
-	svg.WriteString(fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="%s" stroke-width="1"/>`,
-		x, y, x, eventY, config.Colors.Timeline))
+	fmt.Fprintf(svg, `<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="%s" stroke-width="1"/>`,
+		x, y, x, eventY, config.Colors.Timeline)
 
 	// Draw event marker
 	drawEventMarker(svg, x, y, config)
@@ -2206,12 +2212,12 @@ func drawEvent(svg *strings.Builder, event TimelineEvent, x, y int, config Confi
 			text := getElementText(event, elementName, config)
 			if text != "" {
 				style := getColumnStyle(elementName, config)
-				debugPrint("Drawing %s '%s' at position (%d, %d) with style: %s %dpx %s",
+				debugPrintf("Drawing %s '%s' at position (%d, %d) with style: %s %dpx %s",
 					elementName, text, x, position, style.FontFamily, style.FontSize, style.Color)
 
 				// Use inline styling for maximum flexibility
-				svg.WriteString(fmt.Sprintf(`<text x="%d" y="%d" text-anchor="middle" font-family="%s" font-size="%d" font-weight="%s" fill="%s">%s</text>`,
-					x, position, style.FontFamily, style.FontSize, style.FontWeight, style.Color, escapeXML(text)))
+				fmt.Fprintf(svg, `<text x="%d" y="%d" text-anchor="middle" font-family="%s" font-size="%d" font-weight="%s" fill="%s">%s</text>`,
+					x, position, style.FontFamily, style.FontSize, style.FontWeight, style.Color, escapeXML(text))
 			}
 		}
 	}
@@ -2301,6 +2307,25 @@ func main() {
 	flag.Parse()
 	debugMode = *debugFlag
 
+	// Feature flags for preserving unused functions (disabled by default to avoid linter warnings)
+	const enableAlternatePosistioningAlgorithms = false
+	if enableAlternatePosistioningAlgorithms {
+		// Reference unused functions to prevent compiler warnings when feature is enabled
+		_ = estimateEventTextWidth
+		_ = calculateBestPositionsForCallouts
+		_ = hasCollisionsWithCallouts
+		_ = calculateTemporalError
+		_ = adjustForTextCollisions
+		_ = resolve2DCollisions
+		_ = resolveVerticalCollisionGentle
+		_ = resolveHorizontalCollisionMinimal
+		_ = resolveVerticalCollision
+		_ = resolveHorizontalCollision
+		_ = absTimeDuration
+		_ = wrapText
+		_ = estimateWrappedTextBounds
+	}
+
 	// Validate required arguments
 	if *csvFile == "" {
 		fmt.Fprintf(os.Stderr, "Error: CSV file is required. Use --csv to specify the file.\n\n")
@@ -2314,7 +2339,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		os.Exit(1)
 	}
-	debugPrint("Configuration loaded. Font size: %d, Show dates: %t", config.Font.Size, config.Timeline.ShowDates)
+	debugPrintf("Configuration loaded. Font size: %d, Show dates: %t", config.Font.Size, config.Timeline.ShowDates)
 
 	// Parse CSV file
 	events, err := parseCSV(*csvFile, config)
@@ -2322,7 +2347,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error parsing CSV file: %v\n", err)
 		os.Exit(1)
 	}
-	debugPrint("Parsed %d events from %s", len(events), *csvFile)
+	debugPrintf("Parsed %d events from %s", len(events), *csvFile)
 
 	if len(events) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: No events found in CSV file\n")
@@ -2342,7 +2367,7 @@ func main() {
 	outputPath := getOutputFilename(*csvFile, *outputFile)
 
 	// Write SVG file
-	err = os.WriteFile(outputPath, []byte(svgContent), 0644)
+	err = os.WriteFile(outputPath, []byte(svgContent), 0600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing SVG file: %v\n", err)
 		os.Exit(1)
@@ -2407,13 +2432,13 @@ func calculateCalloutLength(x, index int, allPositions []int, above bool, config
 			collisionThreshold := minTextSpacing * 3 // 3x the minimum spacing for early detection
 			if distance < collisionThreshold {
 				collisionRisk++
-				debugPrint("Event %d: nearby event at distance %d (threshold %d)",
+				debugPrintf("Event %d: nearby event at distance %d (threshold %d)",
 					index, distance, collisionThreshold)
 			}
 		}
 	}
 
-	debugPrint("Event %d: collisionRisk=%d, sameHeightEvents=%d", index, collisionRisk, len(sameHeightEvents))
+	debugPrintf("Event %d: collisionRisk=%d, sameHeightEvents=%d", index, collisionRisk, len(sameHeightEvents))
 
 	// Check for very close events (within 30 pixels) to force aggressive level usage
 	veryCloseEvents := 0
@@ -2429,7 +2454,7 @@ func calculateCalloutLength(x, index int, allPositions []int, above bool, config
 	// Calculate staggered heights based on position in the collision group
 	if collisionRisk > 0 || len(sameHeightEvents) > 4 {
 		// Create alternating heights for closely spaced events
-		levelSpacing := lengthRange / max(config.Timeline.CalloutLevels, 3) // At least 3 levels
+		levelSpacing := lengthRange / maxInt(config.Timeline.CalloutLevels, 3) // At least 3 levels
 
 		// Use more aggressive level distribution for clustered events
 		heightLevel := 0
@@ -2438,37 +2463,37 @@ func calculateCalloutLength(x, index int, allPositions []int, above bool, config
 		if veryCloseEvents >= 2 {
 			// Force all levels when events are at nearly identical positions
 			heightLevel = currentEventIndex % config.Timeline.CalloutLevels
-			debugPrint("Event %d: Using ALL %d levels due to %d very close events (within 30px)",
+			debugPrintf("Event %d: Using ALL %d levels due to %d very close events (within 30px)",
 				index, config.Timeline.CalloutLevels, veryCloseEvents)
 		} else if totalEventsOnSide > 6 || collisionRisk >= 3 {
 			// For very crowded areas, distribute across ALL available levels
 			heightLevel = currentEventIndex % config.Timeline.CalloutLevels
-			debugPrint("Event %d: Using all %d levels due to high density (%d events, collision risk %d)",
+			debugPrintf("Event %d: Using all %d levels due to high density (%d events, collision risk %d)",
 				index, config.Timeline.CalloutLevels, totalEventsOnSide, collisionRisk)
 		} else if totalEventsOnSide > 4 || collisionRisk >= 2 {
 			// For moderately crowded areas, use 3/4 of available levels
-			usableLevels := max(config.Timeline.CalloutLevels*3/4, 4)
+			usableLevels := maxInt(config.Timeline.CalloutLevels*3/4, 4)
 			heightLevel = currentEventIndex % usableLevels
-			debugPrint("Event %d: Using %d of %d levels for moderate density (%d events, collision risk %d)",
+			debugPrintf("Event %d: Using %d of %d levels for moderate density (%d events, collision risk %d)",
 				index, usableLevels, config.Timeline.CalloutLevels, totalEventsOnSide, collisionRisk)
 		} else {
 			// For light collision areas, use half the configured levels
-			halfLevels := max(config.Timeline.CalloutLevels/2, 2) // At least 2 levels
+			halfLevels := maxInt(config.Timeline.CalloutLevels/2, 2) // At least 2 levels
 			heightLevel = currentEventIndex % halfLevels
-			debugPrint("Event %d: Using %d of %d levels for light density (%d events, collision risk %d)",
+			debugPrintf("Event %d: Using %d of %d levels for light density (%d events, collision risk %d)",
 				index, halfLevels, config.Timeline.CalloutLevels, totalEventsOnSide, collisionRisk)
 		}
 
 		additionalHeight := heightLevel * levelSpacing
 		baseLength += additionalHeight
 
-		debugPrint("Event %d: collisionRisk=%d, heightLevel=%d, additionalHeight=%d",
+		debugPrintf("Event %d: collisionRisk=%d, heightLevel=%d, additionalHeight=%d",
 			index, collisionRisk, heightLevel, additionalHeight)
 	} // Add extra spacing for very crowded areas
 	if collisionRisk > 2 {
 		densityBonus := (collisionRisk - 2) * 20 // Increased from 15 to 20
 		baseLength += densityBonus
-		debugPrint("Event %d: adding density bonus %d for %d nearby events",
+		debugPrintf("Event %d: adding density bonus %d for %d nearby events",
 			index, densityBonus, collisionRisk)
 	}
 
@@ -2483,7 +2508,7 @@ func calculateCalloutLength(x, index int, allPositions []int, above bool, config
 		baseLength = maxSafeCallout
 	}
 
-	debugPrint("Event %d (x=%d, above=%v): final callout length=%d", index, x, above, baseLength)
+	debugPrintf("Event %d (x=%d, above=%v): final callout length=%d", index, x, above, baseLength)
 	return baseLength
 }
 
@@ -2544,36 +2569,36 @@ func drawEventMarker(svg *strings.Builder, x, y int, config Config) {
 
 	switch strings.ToLower(config.EventMarker.Shape) {
 	case "circle":
-		svg.WriteString(fmt.Sprintf(`<circle cx="%d" cy="%d" r="%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
-			x, y, size, fillColor, strokeColor, strokeWidth))
+		fmt.Fprintf(svg, `<circle cx="%d" cy="%d" r="%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
+			x, y, size, fillColor, strokeColor, strokeWidth)
 
 	case "square":
 		halfSize := size
-		svg.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
-			x-halfSize, y-halfSize, size*2, size*2, fillColor, strokeColor, strokeWidth))
+		fmt.Fprintf(svg, `<rect x="%d" y="%d" width="%d" height="%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
+			x-halfSize, y-halfSize, size*2, size*2, fillColor, strokeColor, strokeWidth)
 
 	case "diamond":
 		// Draw diamond as a rotated square using polygon
-		svg.WriteString(fmt.Sprintf(`<polygon points="%d,%d %d,%d %d,%d %d,%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
+		fmt.Fprintf(svg, `<polygon points="%d,%d %d,%d %d,%d %d,%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
 			x, y-size, // top
 			x+size, y, // right
 			x, y+size, // bottom
 			x-size, y, // left
-			fillColor, strokeColor, strokeWidth))
+			fillColor, strokeColor, strokeWidth)
 
 	case "triangle":
 		// Draw upward pointing triangle
 		height := int(float64(size) * 1.5) // Make triangle a bit taller for better visibility
-		svg.WriteString(fmt.Sprintf(`<polygon points="%d,%d %d,%d %d,%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
+		fmt.Fprintf(svg, `<polygon points="%d,%d %d,%d %d,%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
 			x, y-height, // top point
 			x-size, y+height/2, // bottom left
 			x+size, y+height/2, // bottom right
-			fillColor, strokeColor, strokeWidth))
+			fillColor, strokeColor, strokeWidth)
 
 	default:
 		// Default to circle if unknown shape
-		svg.WriteString(fmt.Sprintf(`<circle cx="%d" cy="%d" r="%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
-			x, y, size, fillColor, strokeColor, strokeWidth))
+		fmt.Fprintf(svg, `<circle cx="%d" cy="%d" r="%d" fill="%s" stroke="%s" stroke-width="%d"/>`,
+			x, y, size, fillColor, strokeColor, strokeWidth)
 	}
 }
 

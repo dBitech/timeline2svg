@@ -43,6 +43,7 @@ timeline2svg.exe
 # Test files
 test_*
 temp_*
+ci_test.*
 
 # Configuration files that might contain sensitive data
 config-local.yaml
@@ -59,3 +60,11 @@ release/
 # Temporary files
 tmp/
 temp/
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# Node modules (if markdownlint is installed locally)
+node_modules/
+package-lock.json

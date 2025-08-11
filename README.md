@@ -20,7 +20,7 @@ go build -o timeline2svg
 timeline2svg --csv your-data.csv
 
 # With configuration and custom output
-timeline2svg --csv your-data.csv --config config.yaml --output timeline.svg
+timeline2svg --csv your-data.csv --config detailed-styling-config.yaml --output timeline.svg
 
 # Enable debug mode to see positioning algorithms
 timeline2svg --debug --csv your-data.csv
@@ -197,7 +197,7 @@ Use the provided sample data:
 
 ```bash
 # Basic timeline generation
-go run main.go --csv sample-data.csv
+go run main.go --csv close-events-sample.csv
 
 # Test temporal clustering with debug output
 go run main.go --debug --csv close-events-sample.csv
